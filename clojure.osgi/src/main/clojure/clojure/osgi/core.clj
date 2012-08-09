@@ -1,11 +1,12 @@
 (ns clojure.osgi.core
-  (:import [clojure.osgi BundleClassLoader RunnableWithException])
+  (:import [clojure.osgi BundleClassLoader RunnableWithException]
+           [org.osgi.framework Bundle])
   (:import [clojure.osgi IClojureOSGi])
 )
 
-(def ^{:private true} osgi-debug false)
+(def ^{:private true} osgi-debug true)
 
-(def ^:dynamic *bundle*)
+(def ^{:dynamic true :tag Bundle} *bundle* nil)
 (def ^:dynamic *clojure-osgi-bundle*)
 
 ; copy from clojure.core BEGIN
@@ -48,7 +49,7 @@
 
 ; copy from clojure.core - END
 
-(defn- full-path [path]
+(defn- full-path [^String path]
 	(if (.startsWith path "/")
 	  path
 	  (str (root-directory (ns-name *ns*)) \/ path))
@@ -102,25 +103,18 @@
     (let [cname (str (namespace-munge lib) "__init")]
       (try
         (.loadClass *bundle* cname)
-        (catch RuntimeException e
-          (if (instance? ClassNotFoundException (.getCause e))
-            (when osgi-debug
-              (println "class not found: " cname))
-            (throw e)
-            )
-          )
-        )
-      )
+        (catch ClassNotFoundException e
+          (when osgi-debug
+            (println "class not found: " cname)
+;            (.printStackTrace e)
+            ))))
      
     (let [rname (str (root-resource lib) ".clj")]
       (or
         (.getResource *bundle* rname)
         (when osgi-debug
-          (println "resource not found: " rname))
-        )
-      )
-    )
-  )
+          (println "resource not found: " rname))))
+  ))
 
 (defn check-libs [libs]
   (doseq [lib libs]
@@ -133,7 +127,7 @@
   )
 )
 
-(when (thread-bound? #'*bundle*)
+(when *bundle*
   (alter-var-root (find-var (symbol "clojure.core" "use"))
     (fn [original]
       (fn [& args]
@@ -185,7 +179,7 @@
 (defn set-context-classloader! [l]
   (-> (Thread/currentThread) (.setContextClassLoader l)))
 
-(when (thread-bound? #'*bundle*)
+(when *bundle*
   (alter-var-root (find-var (symbol "clojure.core" "load"))
     (fn [original]
       (fn [path]
